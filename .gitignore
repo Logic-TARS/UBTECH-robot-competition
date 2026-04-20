@@ -1,0 +1,85 @@
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE 与 AI 编码助手
+.idea/
+.vscode/
+.claude/
+.codex/
+.cursor/
+.aider*
+.windsurf/
+.continue/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# 工具缓存
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Hugging Face / 本地下载
+resources/
+weight/*
+!weight/.gitkeep
+!weight/README.md
+challenge2026_baseline/
+!challenge2026_baseline/.gitkeep
+!challenge2026_baseline/README.md
+challenge2026_dataset/
+!challenge2026_dataset/.gitkeep
+!challenge2026_dataset/README.md
+datasets/*
+!datasets/.gitkeep
+!datasets/README.md
+
+# 防止大文件落在仓库根目录时被误提交
+*.safetensors
+*.ckpt
+*.pth
+*.pt
+*.onnx
+*.h5
+*.hdf5
+
+# 训练与运行产物
+wandb/
+outputs/
+logs/
+checkpoints/
+train_example/*
+!train_example/EXAMPLE/
+tests/outputs/
+
+# 密钥与本地环境
+.env
+.env.*
+!.env.example
+
+# 其他
+*.log
+.cache/
+
+
+*.json
+

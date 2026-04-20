@@ -1,0 +1,72 @@
+# Git
+.git
+.gitmodules
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+*.egg
+
+# 本机虚拟环境
+.venv/
+venv/
+env/
+ENV/
+
+# 本机工具
+.idea/
+.vscode/
+.cursor/
+.claude/
+.codex/
+.aider*
+.windsurf/
+.continue/
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 下载的数据与权重
+challenge2026_baseline/
+challenge2026_dataset/
+datasets/
+weight/
+*.h5
+*.hdf5
+*.safetensors
+*.ckpt
+*.pth
+*.pt
+*.onnx
+
+# 训练与实验输出
+wandb/
+outputs/
+logs/
+checkpoints/
+
+train_example/*
+!train_example/EXAMPLE/
+!train_example/EXAMPLE/**
+
+# 测试产物
+tests/outputs/
+
+# 密钥
+.env
+.env.*
+!.env.example
+
+# 杂项
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.log
+.cache/
