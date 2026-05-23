@@ -15,11 +15,49 @@ This documentation is intended for **GHRC 2026** participants and R&D teams, pro
 | Capability | Description |
 | :--: | --- |
 | **Simulation Environment** | High-fidelity Walker S2 robot simulation based on NVIDIA Isaac Sim, supporting a 20-dimensional state space (14 arm joints + 4 gripper joints + 2 gripper control commands). |
-| **Data Collection** | Supports keyboard teleoperation; exports **LeRobotDataset V3.0** format. |
+| **Data Collection** | Supports keyboard teleoperation and **FSM-based autonomous collection** (Task2 Conveyor Sorting); exports **LeRobotDataset V3.0** format. |
 | **Model Training** | Supports imitation learning algorithms such as **ACT** and **Pi0**. |
 | **4-View Real-time Display** | Supports real-time preview from 4 RGB cameras (head_left, head_right, wrist_left, wrist_right). |
 
-## Resources
+## FSM Auto-Collection (Task2 Conveyor Sorting)
+
+This branch adds **FSM-based autonomous data collection** for Task 2 (Conveyor Sorting), enabling the robot to collect demonstration data without human teleoperation.
+
+| Feature | Description |
+|:---:|---|
+| **FSM States** | Approach → Descend → Grasp → Lift → Transfer → Release |
+| **Conveyor Spawner** | Dynamically spawns parts on the conveyor belt at configurable intervals |
+| **Auto-Collection** | Run `./collect_task2.sh` for headless autonomous episode collection |
+| **Config** | Parameters in `Ubtech_sim/config/Conveyor_Sorting.yaml` under `fsm` section |
+
+### Usage
+
+```bash
+# Autonomous collection with default settings
+./collect_task2.sh
+
+# Override environment variables
+NUM_EPISODES=50 DATASET_ROOT=datasets/task2 HEADLESS=true ./collect_task2.sh
+```
+
+Or launch manually:
+
+```bash
+python Ubtech_sim/main.py --task Conveyor_Sorting --fsm_mode true
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/lerobot/robots/walker_s2_sim/fsm/conveyor_sorting_fsm.py` | FSM state logic |
+| `src/lerobot/robots/walker_s2_sim/fsm/conveyor_sorting_fsm_agent.py` | Agent wrapper for FSM |
+| `Ubtech_sim/source/conveyor_spawner.py` | Dynamic part spawning |
+| `collect_task2.sh` | One-click collection script |
+
+---
+
+## Resources (Official Baseline)
 
 Some large files in this project are hosted on Hugging Face. **Please download them before first use**:
 

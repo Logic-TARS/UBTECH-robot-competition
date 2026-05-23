@@ -15,11 +15,49 @@
 | 能力 | 说明 |
 | :--: | --- |
 | **仿真环境** | 基于 NVIDIA Isaac Sim 的高保真 Walker S2 机器人仿真，支持 20 维状态空间（14 臂关节 + 4 夹爪关节 + 2 夹持器控制指令） |
-| **数据采集** | 支持键盘遥操作；输出 **LeRobotDataset V3.0** 格式 |
+| **数据采集** | 支持键盘遥操作及 **FSM 自动采集**（Task2 传送带分拣）；输出 **LeRobotDataset V3.0** 格式 |
 | **模型训练** | 支持 **ACT**、**Pi0** 等模仿学习算法 |
 | **四目实时显示** | 支持 4 个 RGB 相机实时预览（head_left, head_right, wrist_left, wrist_right） |
 
-## 资源说明
+## FSM 自动采集（Task2 传送带分拣）
+
+本分支新增了**基于有限状态机的自动数据采集**功能，用于 Task 2（传送带分拣），机器人无需人工遥操作即可自动采集示范数据。
+
+| 功能 | 说明 |
+|:---:|---|
+| **FSM 状态** | 靠近 → 下降 → 抓取 → 抬升 → 转移 → 释放 |
+| **传送带生成器** | 以可配置间隔在传送带上动态生成工件 |
+| **自动采集** | 运行 `./collect_task2.sh` 即可无头自动采集 episodes |
+| **配置** | 参数位于 `Ubtech_sim/config/Conveyor_Sorting.yaml` 的 `fsm` 部分 |
+
+### 使用方法
+
+```bash
+# 默认参数自动采集
+./collect_task2.sh
+
+# 覆盖环境变量
+NUM_EPISODES=50 DATASET_ROOT=datasets/task2 HEADLESS=true ./collect_task2.sh
+```
+
+或手动启动：
+
+```bash
+python Ubtech_sim/main.py --task Conveyor_Sorting --fsm_mode true
+```
+
+### 关键文件
+
+| 文件 | 用途 |
+|------|------|
+| `src/lerobot/robots/walker_s2_sim/fsm/conveyor_sorting_fsm.py` | FSM 状态逻辑 |
+| `src/lerobot/robots/walker_s2_sim/fsm/conveyor_sorting_fsm_agent.py` | FSM 代理封装 |
+| `Ubtech_sim/source/conveyor_spawner.py` | 动态工件生成 |
+| `collect_task2.sh` | 一键采集脚本 |
+
+---
+
+## 资源说明（官方 Baseline）
 
 本项目部分大文件托管于 Hugging Face，首次使用前 **请先完成下载**：
 
