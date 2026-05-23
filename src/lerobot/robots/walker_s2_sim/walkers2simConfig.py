@@ -101,6 +101,31 @@ class WalkerS2Config(RobotConfig):
     enable_ros2_teleop: bool = True
     ros2_joint_commands_topic: str = "/isaac/joint_position_commands"
 
+    # FSM 自动采集（Task2 Conveyor_Sorting 使用）
+    fsm_mode: bool = False
+    fsm_pos_tol: float = 0.03
+    fsm_approach_height: float = 0.20
+    fsm_descend_height: float = 0.05
+    fsm_descend_pos_tol: float = 0.045
+    fsm_grasp_frames: int = 45
+    fsm_release_frames: int = 5
+    fsm_state_timeout_frames: int = 800
+    fsm_max_grasp_retries: int = 1
+    fsm_grasp_verify_frames: int = 5
+    fsm_grasp_depth_offset: float = 0.02
+    fsm_grasp_lookahead_time: float = 0.05
+    fsm_grasp_xy_tol: float = 0.030
+    fsm_grasp_z_tol: float = 0.030
+    fsm_grasp_min_frames: int = 10
+    fsm_grasp_force_close_frames: int = 0
+    fsm_gripper_close_settle_frames: int = 12
+    fsm_lift_min_frames: int = 20
+    fsm_table_height: float = 1.20
+    fsm_forearm_tilt_deg: float = 25.0
+    fsm_rot_weight: float = 0.1
+    fsm_smooth_alpha: float = 0.10
+    fsm_ik_null_weight: float = 0.30
+
     # 本地 OpenCV 多相机可视化
     head_viz_enabled: bool = True
     head_viz_window_name: str = "walker_s2_cameras"
@@ -226,6 +251,15 @@ class WalkerS2Config(RobotConfig):
         self.task_cfg_path = str(config_path)
         self.task_cfg = cfg
         self.task_name = effective_task
+
+        for key, value in cfg.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+
+        for key, value in cfg.get("grasp", {}).items():
+            if key.startswith("fsm_") and hasattr(self, key):
+                setattr(self, key, value)
+
         return cfg
 
     def __post_init__(self):

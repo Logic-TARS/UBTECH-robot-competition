@@ -151,6 +151,8 @@ from src.lerobot.utils.visualization_utils import init_rerun, log_rerun_data
 from src.lerobot.robots import Robot, RobotConfig, bi_openarm_follower, bi_so_follower, earthrover_mini_plus, hope_jr, koch_follower, make_robot_from_config, omx_follower, openarm_follower, reachy2, so_follower
 from src.lerobot.teleoperators import Teleoperator, TeleoperatorConfig, bi_openarm_leader, bi_so_leader, homunculus, koch_leader, make_teleoperator_from_config, omx_leader, openarm_leader, openarm_mini, reachy2_teleoperator, so_leader, unitree_g1
 
+LOG = logging.getLogger(__name__)
+
 
 @dataclass
 class DatasetRecordConfig:
@@ -379,6 +381,7 @@ def record_loop(
     start_episode_t = time.perf_counter()
     loop_count = 0
     robot._robot_interface._smooth_alpha = 0.98
+    LOG.debug("Starting record_loop while, timestamp=%s, control_time_s=%s", timestamp, control_time_s)
     while timestamp < control_time_s:
         loop_count += 1
         start_loop_t = time.perf_counter()
@@ -388,7 +391,9 @@ def record_loop(
             break
 
         # Get robot observation
+        LOG.debug("Calling get_observation...")
         obs = robot.get_observation()
+        LOG.debug("get_observation done")
 
         # Applies a pipeline to the raw robot observation, default is IdentityProcessor
         obs_processed = robot_observation_processor(obs)
@@ -475,6 +480,10 @@ def record_loop(
             action_frame = build_dataset_frame(dataset.features, action_values, prefix=ACTION)
             frame = {**observation_frame, **action_frame, "task": single_task}
             dataset.add_frame(frame)
+
+        if getattr(robot, "is_task_done", False):
+            logging.info("Robot task done; ending current episode")
+            break
 
         if display_data:
             log_rerun_data(
@@ -600,33 +609,59 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
             logging.info(
                 "Streaming encoding is disabled. If you have capable hardware, consider enabling it for way faster episode saving. --dataset.streaming_encoding=true --dataset.encoder_threads=2 # --dataset.vcodec=auto. More info in the documentation: https://huggingface.co/docs/lerobot/streaming_video_encoding"
             )
-        log_flag = True
-        while not events["start_record"]:
-            robot.step(render=True) 
-            if log_flag:
-                log_say("调整好按Enter键开始录制...", cfg.play_sounds)
-                log_flag = False
+        auto_collect = bool(getattr(robot, "is_auto_collect_enabled", False))
+        # Auto-start recording when using a policy without teleoperator, or when the
+        # simulated robot provides an autonomous FSM collector.
+        if (policy is not None and teleop is None) or auto_collect:
+            for _ in range(30):
+                robot.step(render=True)
+            events["start_record"] = True
+            if auto_collect and hasattr(robot, "set_fsm_enabled"):
+                robot.set_fsm_enabled(True)
+        else:
+            log_flag = True
+            while not events["start_record"]:
+                robot.step(render=True)
+                if log_flag:
+                    log_say("调整好按Enter键开始录制...", cfg.play_sounds)
+                    log_flag = False
         with VideoEncodingManager(dataset):
             recorded_episodes = 0
             while recorded_episodes < cfg.dataset.num_episodes and not events["stop_recording"]:
                 log_say(f"Recording episode {dataset.num_episodes}", cfg.play_sounds)
-                record_loop(
-                    robot=robot,
-                    events=events,
-                    fps=cfg.dataset.fps,
-                    teleop_action_processor=teleop_action_processor,
-                    robot_action_processor=robot_action_processor,
-                    robot_observation_processor=robot_observation_processor,
-                    teleop=teleop,
-                    policy=policy,
-                    preprocessor=preprocessor,
-                    postprocessor=postprocessor,
-                    dataset=dataset,
-                    control_time_s=cfg.dataset.episode_time_s,
-                    single_task=cfg.dataset.single_task,
-                    display_data=cfg.display_data,
-                    display_compressed_images=display_compressed_images,
-                )
+                logging.info("About to enter record_loop")
+                try:
+                    record_loop(
+                        robot=robot,
+                        events=events,
+                        fps=cfg.dataset.fps,
+                        teleop_action_processor=teleop_action_processor,
+                        robot_action_processor=robot_action_processor,
+                        robot_observation_processor=robot_observation_processor,
+                        teleop=teleop,
+                        policy=policy,
+                        preprocessor=preprocessor,
+                        postprocessor=postprocessor,
+                        dataset=dataset,
+                        control_time_s=cfg.dataset.episode_time_s,
+                        single_task=cfg.dataset.single_task,
+                        display_data=cfg.display_data,
+                        display_compressed_images=display_compressed_images,
+                    )
+                    logging.info("record_loop returned normally")
+                except BaseException:
+                    logging.exception("record_loop failed with BaseException")
+                    raise
+
+                if hasattr(robot, "episode_success"):
+                    episode_success_value = robot.episode_success
+                    logging.info("[AutoCollect] episode_success=%s", episode_success_value)
+                    if episode_success_value is False and not auto_collect:
+                        events["rerecord_episode"] = True
+                        events["exit_early"] = True
+                        logging.info("[AutoCollect] Episode failed; scheduling rerecord")
+                    elif episode_success_value is False:
+                        logging.warning("[AutoCollect] Episode verification failed; keeping autonomous rollout")
 
                 # Execute a few seconds without recording to give time to manually reset the environment
                 # Skip reset for the last episode to be recorded
@@ -638,6 +673,8 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                     policy.reset() if policy is not None else None
                     preprocessor.reset() if preprocessor is not None else None
                     postprocessor.reset() if postprocessor is not None else None
+                    if auto_collect and hasattr(robot, "set_fsm_enabled"):
+                        robot.set_fsm_enabled(True)
                     if cfg.task != "Packing_Box": 
                         robot._scene_builder.save_parts_poses(episode_index=recorded_episodes)
 
@@ -646,6 +683,8 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                     events["rerecord_episode"] = False
                     events["exit_early"] = False
                     dataset.clear_episode_buffer()
+                    if auto_collect and hasattr(robot, "set_fsm_enabled"):
+                        robot.set_fsm_enabled(True)
                     continue
 
                 dataset.save_episode()

@@ -137,6 +137,12 @@ class WalkerS2sim(Robot):
         # 遥操作器（外部注入）
         self._teleop: Any = teleop
 
+        # FSM 自动采集（Task2 Conveyor_Sorting）
+        self._fsm_agent: Any = None
+        self._fsm_active: bool = False
+        self._fsm_task_done: bool = False
+        self._conveyor_spawner: Any = None
+
         # ---- 回调控制相关状态 (移植自 mobile_manipulator.py) ----
         # 回调锁和注册状态
         self._callback_lock = threading.Lock()
@@ -265,8 +271,11 @@ class WalkerS2sim(Robot):
         if task_number == 1:
             num_objects = task_cfg.get("part", {}).get("num_parts", 2) * 2
         elif task_number == 2:
-            # Task2 tracks two part types, each with num_parts instances.
-            num_objects = task_cfg.get("part", {}).get("num_parts", 5) * 2
+            # Dynamic Conveyor_Sorting tracks the spawned parts for one episode.
+            num_objects = task_cfg.get("grasp", {}).get(
+                "total_parts_to_sort",
+                task_cfg.get("part", {}).get("num_parts", 5) * 2,
+            )
         elif task_number == 3:
             num_boxes = len(task_cfg.get('box', {}).get('box_position', []))
             num_parts = task_cfg.get('part', {}).get('num_parts', 3)
@@ -293,8 +302,10 @@ class WalkerS2sim(Robot):
         if task_number == 1:
             num_objects = task_cfg.get("part", {}).get("num_parts", 2) * 2
         elif task_number == 2:
-            # Task2 tracks two part types, each with num_parts instances.
-            num_objects = task_cfg.get("part", {}).get("num_parts", 5) * 2
+            num_objects = task_cfg.get("grasp", {}).get(
+                "total_parts_to_sort",
+                task_cfg.get("part", {}).get("num_parts", 5) * 2,
+            )
         elif task_number == 3:
             num_boxes = len(task_cfg.get('box', {}).get('box_position', []))
             num_parts = task_cfg.get('part', {}).get('num_parts', 3)
@@ -446,8 +457,51 @@ class WalkerS2sim(Robot):
                     self._hold_finger_positions[2:4] = np.array([self._robot_interface.gripper_close_width]*2)
             print(f"[_robot_control_callback] left_gripping={self._left_gripping}, right_gripping={self._right_gripping}")
         elif not self._go_home:
+            # ====== FSM 自动采集模式：Task2 传送带自动分拣 ======
+            if self._fsm_active and self._fsm_agent is not None and self._fsm_agent.is_running:
+                left_target, right_target, left_grip, right_grip, is_done = self._fsm_agent.step()
+
+                ik_kwargs = {}
+                fsm_smooth_alpha = getattr(self.config, "fsm_smooth_alpha", 0.10)
+                if self._fsm_agent.fsm is not None:
+                    if hasattr(self._fsm_agent.fsm, "ik_null_weight"):
+                        ik_kwargs["null_weight"] = self._fsm_agent.fsm.ik_null_weight
+                    if hasattr(self._fsm_agent.fsm, "ik_rot_weight"):
+                        ik_kwargs["rot_weight"] = self._fsm_agent.fsm.ik_rot_weight
+                    if hasattr(self._fsm_agent.fsm, "fsm_smooth_alpha_override"):
+                        smooth_alpha_override = self._fsm_agent.fsm.fsm_smooth_alpha_override
+                        if smooth_alpha_override is not None:
+                            fsm_smooth_alpha = smooth_alpha_override
+                    if hasattr(self._fsm_agent.fsm, "ik_step_size_multiplier"):
+                        step_size = step_size * self._fsm_agent.fsm.ik_step_size_multiplier
+
+                if left_target is not None or right_target is not None:
+                    ik_result = self._robot_interface.control_dual_arm_ik(
+                        step_size=step_size,
+                        left_target_xyzrpy=left_target,
+                        right_target_xyzrpy=right_target,
+                        smooth_alpha=fsm_smooth_alpha,
+                        **ik_kwargs,
+                    )
+                    if ik_result and "smoothed_positions" in ik_result:
+                        sp = ik_result["smoothed_positions"]
+                        offset = 0
+                        if "left_joint_positions" in ik_result:
+                            self._hold_arm_positions[:7] = np.array(sp[offset:offset + 7], dtype=np.float32)
+                            offset += 7
+                        if "right_joint_positions" in ik_result:
+                            self._hold_arm_positions[7:14] = np.array(sp[offset:offset + 7], dtype=np.float32)
+
+                self._left_gripping = left_grip > 0
+                self._right_gripping = right_grip > 0
+                g_open = self._robot_interface.gripper_open_width
+                g_close = self._robot_interface.gripper_close_width
+                self._hold_finger_positions[:2] = g_close if self._left_gripping else g_open
+                self._hold_finger_positions[2:4] = g_close if self._right_gripping else g_open
+                self._fsm_task_done = bool(is_done)
+
             # ====== 遥操作模式：通过 teleop 读取键盘状态，计算 IK ======
-            if self._teleop is not None:
+            elif self._teleop is not None:
                 # 使用回调模式获取键盘动作
                 left_delta, right_delta, left_gripper, right_gripper = self._teleop.get_action_numpy(
                     frame_id=self._send_action_step_idx
@@ -712,11 +766,101 @@ class WalkerS2sim(Robot):
             self._hold_finger_positions = np.array(states["finger_positions"], dtype=np.float32)
             logger.info("快照当前关节状态作为初始保持目标")
 
-        # 步骤 7: 注册回调
+        # 步骤 7: Task2 FSM 自动采集初始化
+        self._initialize_fsm_agent()
+
+        # 步骤 8: 注册回调
         self._register_world_callbacks()
         
 
         logger.info(f"连接成功！正在控制 {len(self._robot_interface.arm_joint_indices)} 个手臂关节")
+
+    def _initialize_fsm_agent(self) -> None:
+        """Create the Task2 conveyor sorting FSM agent when enabled by YAML."""
+        task_cfg = getattr(self.config, "task_cfg", {})
+        if task_cfg.get("task_number") != 2:
+            return
+        if not getattr(self.config, "fsm_mode", False):
+            return
+
+        try:
+            from Ubtech_sim.source.conveyor_spawner import ConveyorPartSpawner
+            from src.lerobot.robots.walker_s2_sim.fsm import ConveyorSortingFSM, ConveyorSortingFSMAgent
+
+            box_cfg = task_cfg.get("box", {})
+            box_positions = box_cfg.get("box_position", [])
+            if len(box_positions) < 2:
+                raise ValueError("Task2 Conveyor_Sorting requires two box positions")
+
+            box_scales = box_cfg.get("box_scale", None)
+            robot_cfg = task_cfg.get("robot", {})
+            robot_pos = robot_cfg.get("robot_position", [0.7, -0.35, 0.9])
+            robot_rot = robot_cfg.get("robot_rotation", [0, 0, 90])
+            grasp_cfg = task_cfg.get("grasp", {})
+            conveyor_config = {
+                "conveyor_speed": grasp_cfg.get("conveyor_speed", 0.1),
+                "conveyor_grab_zone_x_min": grasp_cfg.get("conveyor_grab_zone_x_min", 0.10),
+                "conveyor_grab_zone_x_max": grasp_cfg.get("conveyor_grab_zone_x_max", 0.60),
+                "total_parts_to_sort": grasp_cfg.get("total_parts_to_sort", 8),
+            }
+
+            self._conveyor_spawner = ConveyorPartSpawner(
+                cfg=task_cfg,
+                scene_builder=self._scene_builder,
+                world=self._world,
+            )
+            fsm = ConveyorSortingFSM(
+                config=self.config,
+                box_positions_world=[box_positions[0], box_positions[1]],
+                robot_position_world=robot_pos,
+                robot_rotation_deg=robot_rot,
+                conveyor_config=conveyor_config,
+                box_scales=box_scales,
+            )
+            self._fsm_agent = ConveyorSortingFSMAgent(
+                fsm=fsm,
+                scene_builder=self._scene_builder,
+                robot_interface=self._robot_interface,
+                spawner=self._conveyor_spawner,
+            )
+            self._fsm_active = False
+            self._fsm_task_done = False
+            logger.info("[FSM] Conveyor Sorting FSM agent created")
+        except Exception as exc:
+            logger.error(f"[FSM] Failed to initialize Conveyor Sorting FSM: {exc}")
+            import traceback
+            logger.error(traceback.format_exc())
+            self._fsm_agent = None
+
+    def set_fsm_enabled(self, enabled: bool) -> None:
+        """Enable or pause FSM automation."""
+        if self._fsm_agent is None:
+            logger.warning("[FSM] set_fsm_enabled ignored: no FSM agent")
+            return
+        self._fsm_active = bool(enabled)
+        if enabled:
+            self._fsm_agent.resume()
+            self._fsm_task_done = False
+            logger.info("[FSM] Conveyor Sorting FSM enabled")
+        else:
+            self._fsm_agent.pause()
+            logger.info("[FSM] Conveyor Sorting FSM paused")
+
+    @property
+    def is_auto_collect_enabled(self) -> bool:
+        return self._fsm_agent is not None and getattr(self.config, "fsm_mode", False)
+
+    @property
+    def is_task_done(self) -> bool:
+        if self._fsm_agent is None:
+            return False
+        return bool(self._fsm_task_done or self._fsm_agent.is_task_done)
+
+    @property
+    def episode_success(self) -> Optional[bool]:
+        if self._fsm_agent is None:
+            return None
+        return getattr(self._fsm_agent, "episode_success", None)
 
     def disconnect(self) -> None:
         """断开连接并清理资源
@@ -803,8 +947,27 @@ class WalkerS2sim(Robot):
                     action.get("R_finger2_joint.pos", 0.0),
                 ], dtype=np.float32)
 
-                left_gripper = action.get("left_gripper", 0.0)
-                right_gripper = action.get("right_gripper", 0.0)
+                arm_positions = np.nan_to_num(arm_positions, nan=0.0, posinf=0.0, neginf=0.0)
+                finger_positions = np.nan_to_num(finger_positions, nan=0.0, posinf=0.0, neginf=0.0)
+                left_gripper = float(np.nan_to_num(action.get("left_gripper", 0.0), nan=0.0, posinf=0.0, neginf=0.0))
+                right_gripper = float(np.nan_to_num(action.get("right_gripper", 0.0), nan=0.0, posinf=0.0, neginf=0.0))
+                for key, value in zip(
+                    [
+                        "L_shoulder_pitch_joint.pos", "L_shoulder_roll_joint.pos", "L_shoulder_yaw_joint.pos",
+                        "L_elbow_roll_joint.pos", "L_elbow_yaw_joint.pos", "L_wrist_pitch_joint.pos", "L_wrist_roll_joint.pos",
+                        "R_shoulder_pitch_joint.pos", "R_shoulder_roll_joint.pos", "R_shoulder_yaw_joint.pos",
+                        "R_elbow_roll_joint.pos", "R_elbow_yaw_joint.pos", "R_wrist_pitch_joint.pos", "R_wrist_roll_joint.pos",
+                    ],
+                    arm_positions,
+                ):
+                    action[key] = float(value)
+                for key, value in zip(
+                    ["L_finger1_joint.pos", "L_finger2_joint.pos", "R_finger1_joint.pos", "R_finger2_joint.pos"],
+                    finger_positions,
+                ):
+                    action[key] = float(value)
+                action["left_gripper"] = left_gripper
+                action["right_gripper"] = right_gripper
                 print(f"[send_action] left_gripper={left_gripper}, right_gripper={right_gripper}")
                 # 构建 20D action 数组用于验证
                 action_np = np.concatenate([
@@ -950,9 +1113,14 @@ class WalkerS2sim(Robot):
 
                     env_state_np = np.asarray(self._scene_builder.get_object_poses_flat(), dtype=np.float32).reshape(-1)
                     if env_state_np.shape[0] != env_state_dim:
-                        raise RuntimeError(
-                            f"环境状态维度不匹配：期望 {env_state_dim}, 实际 {env_state_np.shape[0]}"
-                        )
+                        if env_state_np.shape[0] < env_state_dim:
+                            env_state_np = np.pad(
+                                env_state_np,
+                                (0, env_state_dim - env_state_np.shape[0]),
+                                mode="constant",
+                            )
+                        else:
+                            env_state_np = env_state_np[:env_state_dim]
 
                     # 将扁平向量分解为独立的 object_i_x, object_i_y, ... 键
                     # 格式：[obj1_x, obj1_y, obj1_z, obj1_qx, obj1_qy, obj1_qz, obj1_qw, obj2_x, ...]
@@ -1087,6 +1255,11 @@ class WalkerS2sim(Robot):
         else:
             self._hold_arm_positions = None
             self._hold_finger_positions = None
+
+        if self._fsm_agent is not None:
+            self._fsm_agent.reset()
+            self._fsm_active = False
+            self._fsm_task_done = False
 
         # 9. 重新注册回调
         self._register_world_callbacks()

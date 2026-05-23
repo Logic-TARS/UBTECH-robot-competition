@@ -7,6 +7,8 @@ timelimit: 100
 
 task_number: 2
 
+fsm_mode: true
+
 part:
   part_a_usd: "Collected_Part_B_ori_color/Part_B.usd"
   part_b_usd: "Collected_Task2_Part_A/Task2_Part_A.usd"
@@ -63,8 +65,38 @@ grasp:
   lift_time: 2.0
   tcp_offset: [0.0, 0.0, 0.0]   # sixforce_link 局部坐标系下 TCP 的偏移 (m)
   ik_rot_weight: 0.1
+
+  # FSM automation parameters for Task2 auto collection.
+  fsm_pos_tol: 0.03
+  fsm_approach_height: 0.20
+  fsm_descend_height: 0.03
+  fsm_descend_pos_tol: 0.045
+  fsm_grasp_frames: 45
+  fsm_release_frames: 5
+  fsm_state_timeout_frames: 800
+  fsm_max_grasp_retries: 1
+  fsm_grasp_verify_frames: 5
+  fsm_grasp_depth_offset: 0.0
+  fsm_grasp_lookahead_time: 0.05
+  fsm_grasp_xy_tol: 0.030
+  fsm_grasp_z_tol: 0.030
+  fsm_grasp_min_frames: 10
+  fsm_grasp_force_close_frames: 0
+  fsm_gripper_close_settle_frames: 12
+  fsm_lift_min_frames: 20
+  fsm_table_height: 1.20
+  fsm_forearm_tilt_deg: 25.0
+
+  conveyor_speed: 0.1
+  conveyor_spawn_interval_min: 5.0
+  conveyor_spawn_interval_max: 10.0
+  conveyor_spawn_position: [0.12, 0.26859, 0.98]
+  conveyor_grab_zone_x_min: 0.65
+  conveyor_grab_zone_x_max: 1.20
+  total_parts_to_sort: 8
+  parts_per_type: 4
   # 传动带中轴线起始端附近 (ConveyorBelt 中心 x=0.686, y=0.269)
   # 物体应在带面入口端生成，算符及坐标根据具体 USD 模型调整
   scatter_area:
-    center: [0.12, 0.26859, 1.2]   # 带面入口中心，高度参考 plane_position
+    center: [0.12, 0.26859, 0.98]   # 带面入口中心，高度对齐传送带表面
     size:   [0.06, 0.04]               # 第一船 x方向, 第二船 y方向 (m)，紧贴带宽

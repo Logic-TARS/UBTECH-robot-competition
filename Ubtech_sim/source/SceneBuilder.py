@@ -153,20 +153,6 @@ class SceneBuilder:
                     rb = UsdPhysics.RigidBodyAPI(prim)
                     rb.CreateRigidBodyEnabledAttr(False)
 
-            self.cloner = Cloner()
-            num_parts = self.part_cfg.get('num_parts', 5)
-            target_paths_A = self.cloner.generate_paths("/Root/Part_A", num_parts)
-            self.cloner.clone(
-                source_prim_path="/Root/Part_A_Template",
-                prim_paths=target_paths_A
-            )
-
-            target_paths_B = self.cloner.generate_paths("/Root/Part_B", num_parts)
-            self.cloner.clone(
-                source_prim_path="/Root/Part_B_Template",
-                prim_paths=target_paths_B
-            )
-
             # 克隆完成后，隐藏并将原始模板零件移到地下，不参与物理
             for template_path in ['/Root/Part_A_Template', '/Root/Part_B_Template']:
                 prim = stage.GetPrimAtPath(template_path)
@@ -176,49 +162,63 @@ class SceneBuilder:
                     xformable.ClearXformOpOrder()
                     xformable.AddTranslateOp().Set(Gf.Vec3d(0, 0, -100))
 
-            # 只使用克隆的10个零件路径
-            clone_paths = list(target_paths_A) + list(target_paths_B)
+            # 初始化 Cloner；FSM 自动采集模式会在运行中动态生成零件。
+            self.cloner = Cloner()
+            use_dynamic_spawning = self.cfg.get('grasp', {}).get('total_parts_to_sort') is not None
 
-            # 为所有克隆的零件显式应用 RigidBodyAPI（克隆不会自动继承物理属性）
-            for clone_path in clone_paths:
-                prim = stage.GetPrimAtPath(clone_path)
-                if prim.IsValid():
-                    # 应用 RigidBodyAPI 并启用
-                    rb_api = UsdPhysics.RigidBodyAPI.Apply(prim)
-                    rb_api.CreateRigidBodyEnabledAttr(True)
-                    # 应用 MassAPI
-                    mass_api = UsdPhysics.MassAPI.Apply(prim)
-                    mass_api.CreateMassAttr(0.2)  # 设置质量为 0.2kg
+            if use_dynamic_spawning:
+                self.parts_prim_paths = []
+                self.rigid_prim = None
+                print("[SceneBuilder] Task2 初始化: 动态生成模式 (FSM)")
+            else:
+                num_parts = self.part_cfg.get('num_parts', 5)
+                target_paths_A = self.cloner.generate_paths("/Root/Part_A", num_parts)
+                self.cloner.clone(
+                    source_prim_path="/Root/Part_A_Template",
+                    prim_paths=target_paths_A
+                )
 
-            # 创建 RigidPrim 视图
-            self.rigid_prim = RigidPrim(
-                prim_paths_expr=clone_paths,
-                name="rigid_prim_view"
-            )
+                target_paths_B = self.cloner.generate_paths("/Root/Part_B", num_parts)
+                self.cloner.clone(
+                    source_prim_path="/Root/Part_B_Template",
+                    prim_paths=target_paths_B
+                )
 
-            total_parts = num_parts * 2
-            random_indices = np.random.permutation(np.arange(total_parts))
+                # 只使用克隆的零件路径
+                clone_paths = list(target_paths_A) + list(target_paths_B)
 
-            start_position = -0.3 - total_parts * self.part_cfg['part_distance']
+                # 为所有克隆的零件显式应用 RigidBodyAPI（克隆不会自动继承物理属性）
+                for clone_path in clone_paths:
+                    prim = stage.GetPrimAtPath(clone_path)
+                    if prim.IsValid():
+                        rb_api = UsdPhysics.RigidBodyAPI.Apply(prim)
+                        rb_api.CreateRigidBodyEnabledAttr(True)
+                        mass_api = UsdPhysics.MassAPI.Apply(prim)
+                        mass_api.CreateMassAttr(0.2)
 
-            init_positions = np.column_stack([
-                np.linspace(start_position, -0.3, total_parts),
-                np.full(total_parts, 0.278),
-                np.full(total_parts, 0.98),
-            ])
+                self.rigid_prim = RigidPrim(
+                    prim_paths_expr=clone_paths,
+                    name="rigid_prim_view"
+                )
 
-            self.rigid_prim.set_world_poses(
-                positions=init_positions,
-                indices=random_indices
-            )
+                total_parts = num_parts * 2
+                random_indices = np.random.permutation(np.arange(total_parts))
+                start_position = -0.3 - total_parts * self.part_cfg['part_distance']
+                init_positions = np.column_stack([
+                    np.linspace(start_position, -0.3, total_parts),
+                    np.full(total_parts, 0.278),
+                    np.full(total_parts, 0.98),
+                ])
 
-            # 保存 Task2 初始位姿，用于 reset
-            self._task2_initial_positions = init_positions.copy()
-            self._task2_initial_indices = random_indices.copy()
+                self.rigid_prim.set_world_poses(
+                    positions=init_positions,
+                    indices=random_indices
+                )
 
-            # 保存零件 prim 路径，用于 get_parts_world_poses 和 save_parts_poses
-            self.parts_prim_paths = clone_paths
-            print(f"[SceneBuilder] Task2 初始化: 发现 {len(self.parts_prim_paths)} 个零件")
+                self._task2_initial_positions = init_positions.copy()
+                self._task2_initial_indices = random_indices.copy()
+                self.parts_prim_paths = clone_paths
+                print(f"[SceneBuilder] Task2 初始化: 发现 {len(self.parts_prim_paths)} 个零件")
 
 
         elif self.cfg['task_number'] == 1:
@@ -396,7 +396,10 @@ class SceneBuilder:
         if task == 1:
             return task_cfg.get('part', {}).get('num_parts', 2) * 2
         elif task == 2:
-            return task_cfg.get('part', {}).get('num_parts', 5) * 2
+            return task_cfg.get('grasp', {}).get(
+                'total_parts_to_sort',
+                task_cfg.get('part', {}).get('num_parts', 5) * 2,
+            )
         elif task == 3:
             num_boxes = len(task_cfg.get('box', {}).get('box_position', []))
             num_parts = task_cfg.get('part', {}).get('num_parts', 3)
@@ -427,7 +430,14 @@ class SceneBuilder:
         elif task == 2:
             if not hasattr(self, 'rigid_prim') or self.rigid_prim is None:
                 n = self.compute_num_tracked_objects(self.cfg)
-                return np.zeros(n * 7, dtype=np.float32)
+                poses = self.get_parts_world_poses()
+                result = []
+                for p in poses[:n]:
+                    result.extend(p['position'])
+                    result.extend(p['orientation'])
+                if len(result) < n * 7:
+                    result.extend([0.0] * (n * 7 - len(result)))
+                return np.array(result[:n * 7], dtype=np.float32)
             positions, orientations = self.rigid_prim.get_world_poses()
             # Isaac Sim 返回 wxyz，转换为 xyzw 与 Task1/3 一致
             result = []
@@ -776,6 +786,105 @@ class SceneBuilder:
     def sync_foam_to_box(self):
         """任务4: 箱子资产已自带 foam mesh，无需同步（保留接口兼容）。"""
         pass
+
+    def spawn_conveyor_part(self, part_type: str, position: list, rotation: list = None):
+        """Spawn a single part on the conveyor for Task2 FSM auto collection."""
+        import omni.usd
+        from pxr import UsdPhysics, UsdGeom, Gf
+
+        stage = omni.usd.get_context().get_stage()
+        template_path = f'/Root/Part_{part_type}_Template'
+        part_idx = len(self.parts_prim_paths)
+        new_path = f'/Root/ConveyorPart_{part_type}_{part_idx}'
+
+        try:
+            if part_type == "A":
+                usd_path = self._usd_path(self.part_cfg["part_a_usd"])
+            else:
+                usd_path = self._usd_path(self.part_cfg["part_b_usd"])
+            stage_utils.add_reference_to_stage(usd_path=usd_path, prim_path=new_path)
+
+            prim = stage.GetPrimAtPath(new_path)
+            if not prim.IsValid():
+                print(f"[SceneBuilder] Failed to spawn part: prim {new_path} invalid")
+                return None
+
+            rb_api = UsdPhysics.RigidBodyAPI.Apply(prim)
+            rb_api.CreateRigidBodyEnabledAttr(True)
+            mass_api = UsdPhysics.MassAPI.Apply(prim)
+            mass_api.CreateMassAttr(0.2)
+
+            UsdGeom.Imageable(prim).CreateVisibilityAttr("inherited")
+            for child in prim.GetChildren():
+                if child.IsValid():
+                    UsdGeom.Imageable(child).CreateVisibilityAttr("inherited")
+
+            if rotation is None:
+                rotation = [random.uniform(-90, 90) for _ in range(3)]
+
+            xformable = UsdGeom.Xformable(prim)
+            xformable.ClearXformOpOrder()
+            xformable.AddTranslateOp().Set(Gf.Vec3d(*position))
+            xformable.AddRotateXYZOp().Set(Gf.Vec3d(*rotation))
+
+            self.parts_prim_paths.append(new_path)
+            print(f"[SceneBuilder] Spawned conveyor part {new_path} at {position}")
+            return new_path
+        except Exception as e:
+            print(f"[SceneBuilder] Error spawning conveyor part: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def move_conveyor_parts(self, part_paths: list[str], delta_x: float):
+        """Advance dynamically spawned Task2 parts along the conveyor."""
+        if abs(delta_x) < 1e-9:
+            return
+
+        import omni.usd
+        from pxr import UsdGeom, Gf
+
+        stage = omni.usd.get_context().get_stage()
+        for path in list(part_paths):
+            prim = stage.GetPrimAtPath(path)
+            if not prim.IsValid():
+                continue
+            follow_attr = prim.GetAttribute("ubtech:conveyorFollow")
+            if follow_attr and follow_attr.Get() is False:
+                continue
+
+            xformable = UsdGeom.Xformable(prim)
+            translate_op = None
+            for op in xformable.GetOrderedXformOps():
+                if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
+                    translate_op = op
+                    break
+
+            # Read the live world transform instead of the authored translate
+            # op so gravity/contact can settle Z while we only advance along X.
+            current_pos = UsdGeom.XformCache().GetLocalToWorldTransform(prim).ExtractTranslation()
+            if translate_op is None:
+                translate_op = xformable.AddTranslateOp()
+
+            translate_op.Set(Gf.Vec3d(float(current_pos[0]) + float(delta_x),
+                                      float(current_pos[1]),
+                                      float(current_pos[2])))
+
+    def delete_spawned_conveyor_parts(self):
+        """Delete dynamically spawned Task2 conveyor parts."""
+        import omni.usd
+
+        stage = omni.usd.get_context().get_stage()
+        deleted_count = 0
+        for path in self.parts_prim_paths[:]:
+            if 'ConveyorPart' in path:
+                prim = stage.GetPrimAtPath(path)
+                if prim.IsValid():
+                    stage.RemovePrim(path)
+                    deleted_count += 1
+                self.parts_prim_paths.remove(path)
+
+        print(f"[SceneBuilder] Deleted {deleted_count} spawned conveyor parts")
 
     def build_all(self):
         """Build every object defined in the config."""
@@ -1227,19 +1336,20 @@ class SceneBuilder:
             except Exception as e:
                 print(f"[SceneBuilder] 传送带停止失败: {e}")
 
-            # 官方标准：10个零件（5A + 5B）
-            random_indices = np.random.permutation(np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]))
-            # 清零速度和角速度，防止物体保留上一轮运动状态
-            # 注意：rigid_prim 包含所有 /Root/Part_.* 匹配的 prim（包括原始的A/B共12个）
-            # 只需要清零克隆的10个零件的速度
-            self.rigid_prim.set_velocities(velocities=np.zeros((10, 6)))
-            # 恢复初始位姿，随机排列顺序
-            self.rigid_prim.set_world_poses(
-                positions=self._task2_initial_positions,
-                indices=random_indices
-            )
-            # 再次清零速度，确保位姿设置后速度为零
-            self.rigid_prim.set_velocities(velocities=np.zeros((10, 6)))
+            if hasattr(self, 'rigid_prim') and self.rigid_prim is not None:
+                # 静态 Task2：恢复预生成零件。
+                total_parts = len(self.parts_prim_paths)
+                random_indices = np.random.permutation(np.arange(total_parts))
+                self.rigid_prim.set_velocities(velocities=np.zeros((total_parts, 6)))
+                self.rigid_prim.set_world_poses(
+                    positions=self._task2_initial_positions,
+                    indices=random_indices
+                )
+                self.rigid_prim.set_velocities(velocities=np.zeros((total_parts, 6)))
+            else:
+                # FSM 自动采集：零件由 ConveyorPartSpawner 动态生成。
+                self.delete_spawned_conveyor_parts()
+                print("[SceneBuilder] Task2 using FSM spawner - skipping rigid_prim reset")
 
             # 重新启动传送带（沿 X 轴正方向，速度 0.1 m/s）
             try:

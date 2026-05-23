@@ -26,9 +26,14 @@ from pathlib import Path
 from statistics import mean
 import numpy as np
 import torch
-from accelerate import Accelerator
 from datasets.utils.logging import disable_progress_bar, enable_progress_bar
 from termcolor import colored
+
+try:
+    from accelerate import Accelerator
+except ImportError:
+    class Accelerator:  # type: ignore[no-redef]
+        is_main_process = True
 
 
 def log_control_info(fps=None):

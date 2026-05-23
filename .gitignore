@@ -52,6 +52,9 @@ ENV/
 .coverage
 htmlcov/
 
+# Hugging Face cache
+.hf_cache/
+
 # Hugging Face / 本地下载
 resources/
 weight/*

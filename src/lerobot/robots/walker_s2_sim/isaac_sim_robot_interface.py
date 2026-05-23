@@ -859,6 +859,7 @@ class IsaacSimRobotInterface:
         step_size: float,
         left_target_xyzrpy=None,
         right_target_xyzrpy=None,
+        smooth_alpha: float | None = None,
         **ik_kwargs,
     ):
         """Dual-arm IK control: Send left and right arm end-effector targets [x,y,z,roll,pitch,yaw] simultaneously.
@@ -867,6 +868,7 @@ class IsaacSimRobotInterface:
             step_size: Physics step size (seconds)
             left_target_xyzrpy: Left arm target pose, None keeps current position
             right_target_xyzrpy: Right arm target pose, None keeps current position
+            smooth_alpha: Override EMA alpha for this call (None = use default _smooth_alpha)
             **ik_kwargs: Parameters passed to IK solver (max_iter, pos_tol, rot_tol, damping, dt)
         """
         from isaacsim.core.utils.types import ArticulationActions
@@ -896,14 +898,14 @@ class IsaacSimRobotInterface:
         warn_msg = []
 
         if 'left_joint_positions' in ik_result:
-            smoothed = self._smooth_joints('left', ik_result['left_joint_positions'])
+            smoothed = self._smooth_joints('left', ik_result['left_joint_positions'], alpha=smooth_alpha)
             all_indices.extend(self._left_arm_isaac_indices)
             all_positions.extend(smoothed.tolist())
             if not ik_result['left_success']:
                 warn_msg.append("left arm")
 
         if 'right_joint_positions' in ik_result:
-            smoothed = self._smooth_joints('right', ik_result['right_joint_positions'])
+            smoothed = self._smooth_joints('right', ik_result['right_joint_positions'], alpha=smooth_alpha)
             all_indices.extend(self._right_arm_isaac_indices)
             all_positions.extend(smoothed.tolist())
             if not ik_result['right_success']:
@@ -911,7 +913,7 @@ class IsaacSimRobotInterface:
 
         if warn_msg:
             self._ik_warn_counter += 1
-            if self._ik_warn_counter >= 200:
+            if self._ik_warn_counter >= 20:
                 diag = ""
                 if hasattr(self.ik_solver, '_last_fail_info'):
                     info = self.ik_solver._last_fail_info
@@ -930,6 +932,11 @@ class IsaacSimRobotInterface:
             )
 
         if len(all_indices) > 0:
+            pos_arr = np.array(all_positions, dtype=float)
+            if np.any(np.isnan(pos_arr)):
+                logger.warning("[control_dual_arm_ik] NaN in smoothed positions — skipping apply_action")
+                ik_result['smoothed_positions'] = all_positions
+                return ik_result
             self._articulation.apply_action(
                 ArticulationActions(
                     joint_positions=torch.tensor([all_positions], dtype=torch.float32),
@@ -939,16 +946,19 @@ class IsaacSimRobotInterface:
         ik_result['smoothed_positions'] = all_positions
         return ik_result
 
-    def _smooth_joints(self, side: str, ik_positions: np.ndarray) -> np.ndarray:
+    def _smooth_joints(self, side: str, ik_positions: np.ndarray, alpha: float | None = None) -> np.ndarray:
         """EMA smoothing of IK joint output to reduce jitter."""
         ik_positions = np.asarray(ik_positions, dtype=float)
+        if np.any(np.isnan(ik_positions)):
+            if side in self._last_arm_positions:
+                return self._last_arm_positions[side].copy()
+            return np.zeros_like(ik_positions)
         if side not in self._last_arm_positions:
             self._last_arm_positions[side] = ik_positions.copy()
             return ik_positions
 
         prev = self._last_arm_positions[side]
-        alpha = self._smooth_alpha
-        smoothed = prev + alpha * (ik_positions - prev)
+        a = alpha if alpha is not None else self._smooth_alpha
+        smoothed = prev + a * (ik_positions - prev)
         self._last_arm_positions[side] = smoothed.copy()
         return smoothed
-
