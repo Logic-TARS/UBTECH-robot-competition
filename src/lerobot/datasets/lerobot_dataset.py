@@ -1393,6 +1393,9 @@ class LeRobotDataset(torch.utils.data.Dataset):
             f"Batch encoding {self.batch_encoding_size} videos for episodes {start_episode} to {end_episode - 1}"
         )
 
+        self.meta._close_writer()
+        self.meta.episodes = load_episodes(self.root)
+
         chunk_idx = self.meta.episodes[start_episode]["data/chunk_index"]
         file_idx = self.meta.episodes[start_episode]["data/file_index"]
         episode_df_path = self.root / DEFAULT_EPISODES_PATH.format(chunk_index=chunk_idx, file_index=file_idx)
@@ -1430,6 +1433,9 @@ class LeRobotDataset(torch.utils.data.Dataset):
             episode_df = episode_df.combine_first(video_ep_df)
             episode_df.to_parquet(episode_df_path)
             self.meta.episodes = load_episodes(self.root)
+            self.meta.latest_episode = {
+                key: [value] for key, value in self.meta.episodes[ep_idx].items()
+            }
 
     def _save_episode_data(self, episode_buffer: dict) -> dict:
         """Save episode data to a parquet file and update the Hugging Face dataset of frames data.
@@ -1547,11 +1553,20 @@ class LeRobotDataset(torch.utils.data.Dataset):
         ):
             # Initialize indices for a new dataset made of the first episode data
             chunk_idx, file_idx = 0, 0
-            if self.meta.episodes is not None and len(self.meta.episodes) > 0:
+            video_chunk_key = f"videos/{video_key}/chunk_index"
+            video_file_key = f"videos/{video_key}/file_index"
+            if (
+                self.meta.episodes is not None
+                and len(self.meta.episodes) > 0
+                and video_chunk_key in self.meta.episodes[-1]
+                and video_file_key in self.meta.episodes[-1]
+                and self.meta.episodes[-1][video_chunk_key] is not None
+                and self.meta.episodes[-1][video_file_key] is not None
+            ):
                 # It means we are resuming recording, so we need to load the latest episode
                 # Update the indices to avoid overwriting the latest episode
-                old_chunk_idx = self.meta.episodes[-1][f"videos/{video_key}/chunk_index"]
-                old_file_idx = self.meta.episodes[-1][f"videos/{video_key}/file_index"]
+                old_chunk_idx = self.meta.episodes[-1][video_chunk_key]
+                old_file_idx = self.meta.episodes[-1][video_file_key]
                 chunk_idx, file_idx = update_chunk_file_indices(
                     old_chunk_idx, old_file_idx, self.meta.chunks_size
                 )

@@ -19,6 +19,7 @@ import importlib
 import logging
 import queue
 import shutil
+import subprocess
 import tempfile
 import threading
 import warnings
@@ -524,47 +525,35 @@ def concatenate_video_files(
         tmp_concatenate_file.flush()
         tmp_concatenate_path = tmp_concatenate_file.name
 
-    # Create input and output containers
-    input_container = av.open(
-        tmp_concatenate_path, mode="r", format="concat", options={"safe": "0"}
-    )  # safe = 0 allows absolute paths as well as relative paths
-
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_named_file:
         tmp_output_video_path = tmp_named_file.name
 
-    output_container = av.open(
-        tmp_output_video_path, mode="w", options={"movflags": "faststart"}
-    )  # faststart is to move the metadata to the beginning of the file to speed up loading
-
-    # Replicate input streams in output container
-    stream_map = {}
-    for input_stream in input_container.streams:
-        if input_stream.type in ("video", "audio", "subtitle"):  # only copy compatible streams
-            stream_map[input_stream.index] = output_container.add_stream_from_template(
-                template=input_stream, opaque=True
-            )
-
-            # set the time base to the input stream time base (missing in the codec context)
-            stream_map[input_stream.index].time_base = input_stream.time_base
-
-    # Demux + remux packets (no re-encode)
-    for packet in input_container.demux():
-        # Skip packets from un-mapped streams
-        if packet.stream.index not in stream_map:
-            continue
-
-        # Skip demux flushing packets
-        if packet.dts is None:
-            continue
-
-        output_stream = stream_map[packet.stream.index]
-        packet.stream = output_stream
-        output_container.mux(packet)
-
-    input_container.close()
-    output_container.close()
-    shutil.move(tmp_output_video_path, output_video_path)
-    Path(tmp_concatenate_path).unlink()
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-safe",
+                "0",
+                "-f",
+                "concat",
+                "-i",
+                tmp_concatenate_path,
+                "-c",
+                "copy",
+                "-movflags",
+                "faststart",
+                tmp_output_video_path,
+            ],
+            check=True,
+        )
+        shutil.move(tmp_output_video_path, output_video_path)
+    finally:
+        Path(tmp_concatenate_path).unlink(missing_ok=True)
+        Path(tmp_output_video_path).unlink(missing_ok=True)
 
 
 class _CameraEncoderThread(threading.Thread):
@@ -989,7 +978,9 @@ def get_video_info(video_path: Path | str) -> dict:
 
         video_info["video.height"] = video_stream.height
         video_info["video.width"] = video_stream.width
-        video_info["video.codec"] = video_stream.codec.canonical_name
+        video_info["video.codec"] = getattr(
+            video_stream.codec, "canonical_name", video_stream.codec.name
+        )
         video_info["video.pix_fmt"] = video_stream.pix_fmt
         video_info["video.is_depth_map"] = False
 
