@@ -1,2 +1,0 @@
-from .mobile_manipulator import MobileManipulator
-from .configs import WalkerS2SimRobotConfig

@@ -74,10 +74,10 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
 
-IMAGE_NAME="${IMAGE_NAME:-isaac-sim-nijie-lerobot:v5}"
-CONTAINER_NAME="${CONTAINER_NAME:-isaac_sim_ubt}"
+IMAGE_NAME="${IMAGE_NAME:-ubtech:v0}"
+CONTAINER_NAME="${CONTAINER_NAME:-isaac_sim_lerobot_ubt}"
 HOST_WORKSPACE="${HOST_WORKSPACE:-${PROJECT_ROOT}}"
-CONTAINER_WORKSPACE="${CONTAINER_WORKSPACE:-/workspace/lerobot_0.5.1}"
+CONTAINER_WORKSPACE="${CONTAINER_WORKSPACE:-/workspace/GlobalHumanoidRobotChallenge2026_Baseline}"
 SHM_SIZE="${SHM_SIZE:-8g}"
 
 # Isaac Sim 缓存目录（持久化挂载，避免每次启动重新编译 shader / 下载资产）
@@ -171,7 +171,7 @@ DOCKER_ARGS+=(
 )
 
 # --- 挂载：设备（仅当路径存在时挂载，避免报错）---
-for dev_path in /dev/bus/usb /run/udev /var/run/dbus; do
+for dev_path in /dev/bus/usb /dev/input /run/udev /var/run/dbus; do
     if [ -e "$dev_path" ]; then
         DOCKER_ARGS+=(-v "${dev_path}:${dev_path}:rw")
     fi

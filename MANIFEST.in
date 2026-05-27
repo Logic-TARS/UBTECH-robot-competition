@@ -1,3 +1,0 @@
-include lerobot/templates/lerobot_modelcard_template.md
-include lerobot/datasets/card_template.md
-include lerobot/envs/metaworld_config.json

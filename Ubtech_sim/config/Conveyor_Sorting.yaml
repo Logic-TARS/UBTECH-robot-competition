@@ -1,16 +1,16 @@
       
-root_path: "../assets/resources/"
+root_path: "../../assets/resources/"
 
 scene_usd: 'Collected_Task4/SubUSDs/2_small_warehouse2.usd'
 
-timelimit: 100
+timelimit: 300           # 自动数采单个 episode 最大运行时间 (s)
 
 task_number: 2
 
 part:
-  part_a_usd: "Collected_Part_B_ori_color/Part_B.usd"
-  part_b_usd: "Collected_Task2_Part_A/Task2_Part_A.usd"
-  num_parts: 5
+  part_a_usd: "Collected_Task2_Part_A/Task2_Part_A.usd"
+  part_b_usd: "Collected_Part_B_ori_color/Part_B.usd"
+  num_parts: 4
   part_distance: 0.4
 
 plane:
@@ -22,12 +22,12 @@ plane:
 
 ConveyorBelt:
   ConveyorBelt_usd: 'Collected_ConveyorBelt_New/Collected_ConveyorBelt/ConveyorBelt.usd'
-  ConveyorBelt_position: 
+  ConveyorBelt_position:
   - [-0.13357845206723284, 0.26859, 0.0]
-  ConveyorBelt_scale: 
+  ConveyorBelt_scale:
   - [1.0, 1.0, 1.0]
   ConveyorBelt_speed:
-  - [0.0285, 0.0, 0.0]
+  - [0.0142, 0.0, 0.0]
 
 table:
   table_usd: 'Collected_table_v2/table_v2.usd'
@@ -65,6 +65,31 @@ grasp:
   lift_time: 2.0
   tcp_offset: [0.0, 0.0, 0.0]   # sixforce_link 局部坐标系下 TCP 的偏移 (m)
   ik_rot_weight: 0.1
+
+  conveyor_part_a_place_rpy: [-3.1135, -0.3173, -2.1132] # part_a 仅投放阶段 RPY
+  conveyor_part_b_place_rpy: [3.0965, -0.1994, -1.7034]  # part_b 仅投放阶段 RPY
+  conveyor_x_lead: 0.20                # 阶段2/3固定目标沿传送带 x 方向提前量 (m)
+  conveyor_stage2_target_x: 0.6049     # 阶段2 IK x 目标；None 表示使用 conveyor_x_lead
+  conveyor_stage2_target_y: -0.1156    # 阶段2 IK y 目标
+  conveyor_stage2_target_z: 0.1        # 阶段2 IK z 目标，上方位置
+  conveyor_stage2_duration: 0.4        # 阶段2 移动时长，调大可让 IK/插值更接近指定 y
+  conveyor_stage3_target_x: 0.6049     # 阶段3 IK x 目标
+  conveyor_stage3_target_y: -0.1156    # 阶段3 IK y 目标
+  conveyor_stage3_target_z: 0.0984     # 阶段3 IK z 目标
+  conveyor_stage4_target_x: None       # 阶段4 IK x 目标；None 表示沿用阶段2 x
+  conveyor_stage4_target_y: -0.1156   # 阶段4 IK y 目标
+  conveyor_stage4_target_z: 0.3        # 阶段4 IK z 目标
+  conveyor_stage6_prepare_target_z: 0.1 # 阶段6投放前预定位 z 目标；x/y 与最终投放位置一致，None 表示跳过
+  conveyor_left_bin_x_range: [0.39616, 0.57616] # 左盒最终入箱检查 x 范围
+  conveyor_left_bin_y_range: [-0.202, 0.078]    # 左盒最终入箱检查 y 范围
+  conveyor_right_bin_x_range: [0.79616, 0.97616] # 右盒最终入箱检查 x 范围
+  conveyor_right_bin_y_range: [-0.202, 0.078]    # 右盒最终入箱检查 y 范围
+  conveyor_close_world_x_min: 0.810     # 实时零件世界坐标 x >= 该值时允许闭爪
+  conveyor_close_world_x_max: 0.83     # 实时零件世界坐标 x <= 该值时允许闭爪
+  conveyor_record_start_x: 0.48        # 第一个未处理零件世界坐标 x 超过该值后才开始写入数据集
+  conveyor_wait_part_timeout_s: 60.0   # 等待零件进入记录/抓取阶段超过该时间后，重采当前 episode；<=0 表示关闭
+  conveyor_home_return_steps: 10        # 每完成一个零件后，right 臂回 home 的录制步数
+  conveyor_pose_log_interval_s: 0.05    # 运行时每隔多少秒打印 ee_poses 和零件位姿
   # 传动带中轴线起始端附近 (ConveyorBelt 中心 x=0.686, y=0.269)
   # 物体应在带面入口端生成，算符及坐标根据具体 USD 模型调整
   scatter_area:
