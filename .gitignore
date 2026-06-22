@@ -12,174 +12,106 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-### Environments & Dependencies ###
-.env
-.venv
-env/
-venv/
-env.bak/
-venv.bak/
-.python-version
-__pypackages__/
-node_modules/
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
 
-# Lock files
-poetry.lock
-uv.lock
-Pipfile.lock
-
-### Build & Distribution ###
-build/
-dist/
-sdist/
-wheels/
-downloads/
-eggs/
-.eggs/
-parts/
-var/
-pip-wheel-metadata/
-share/python-wheels/
-develop-eggs/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-lib/
-lib64/
-
-# PyInstaller
-*.manifest
-*.spec
-
-### Compiled & Cached Files ###
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-*.sage.py
-.cache/
-.ruff_cache/
-.mypy_cache/
-.pyre/
-.pytype/
-cython_debug/
+*.egg-info/
+.eggs/
+build/
+dist/
+*.egg
 
-### Testing & Coverage ###
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.pytest_cache/
-.hypothesis/
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-!tests/artifacts
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
 
-### Logs & Temporary Files ###
-logs/
-tmp/
-*.log
-pip-log.txt
-pip-delete-this-directory.txt
-celerybeat-schedule
-celerybeat.pid
-
-### IDE & Editor Config ###
-# VS Code
-.vscode/
-.devcontainer/
-
-# JetBrains / PyCharm
+# IDE 与 AI 编码助手
 .idea/
-
-# Spyder
-.spyderproject
-.spyproject
-
-# Rope
-.ropeproject
-
-# Vim
-*.swp
-
-# Other
-*~
-
-### OS Specific ###
-# macOS
-.DS_Store
-
-# Windows
-Thumbs.db
-
-### Framework & Tool Specific ###
-
-.Python
-
-# Django
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask
-instance/
-.webassets-cache
-
-# Scrapy
-.scrapy
-
+.vscode/
+.claude/
+.codex/
+.cursor/
+.aider*
+.windsurf/
+.continue/
+.codex
 # Jupyter
 .ipynb_checkpoints/
-profile_default/
-ipython_config.py
 
-# Sphinx
-docs/_build/
+# 工具缓存
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# MkDocs
-/site
-
-# PyBuilder
-.pybuilder/
-target/
-
-# mypy
-.dmypy.json
-dmypy.json
-
-### HPC & Slurm ###
-nautilus/*.yaml
-*.key
-sbatch*.sh
-
-### Miscellaneous ###
-# W&B
-wandb/
-
-# Dev scripts
-.dev/
-
-# Data folders
-data/
-outputs/
-
-# Translations
-*.mo
-*.pot
-
-# Dev folders
-.cache/*
-*.stl
-*.urdf
-*.xml
-*.part
-
+# Hugging Face / 本地下载
+resources/
+weight/*
+!weight/.gitkeep
+!weight/README.md
+challenge2026_baseline/
+!challenge2026_baseline/.gitkeep
+!challenge2026_baseline/README.md
+challenge2026_dataset/
+!challenge2026_dataset/.gitkeep
+!challenge2026_dataset/README.md
 datasets/*
-src/lerobot/ecbg/*
-output/*
+!datasets/.gitkeep
+!datasets/README.md
 
-assets/*
+# 防止大文件落在仓库根目录时被误提交
+*.safetensors
+*.ckpt
+*.pth
+*.pt
+*.onnx
+*.h5
+*.hdf5
+
+# 训练与运行产物
+wandb/
+outputs/
+logs/
+checkpoints/
+train_example/*
+!train_example/EXAMPLE/
+tests/outputs/
+
+# 密钥与本地环境
+.env
+.env.*
+!.env.example
+
+# 其他
+*.log
+.cache/
+docs/
+*.json
+.codex
+.github
+txt
+prompt*.md
+# 数据处理脚本
+augment_converted_dataset_quantiles.py
+compute_image_quantile_stats.py
+convert_merge_env_state.py
+process_converted_part_sorting_quantiles.py
+convert_merge_env_state.py
+convert_split_env_state.py
+
+# 过程文献 / 分析文件
+*分析*.md
+project_struct
+auto_collect*.md
+
+# 本地工具缓存
+.codewhale/
+.hf_cache/

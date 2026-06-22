@@ -232,8 +232,7 @@ lerobot-setup-can="lerobot.scripts.lerobot_setup_can:main"
 lerobot = ["envs/*.json"]
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["lerobot*"]
+where = ["src"]
 
 [tool.ruff]
 target-version = "py312"
@@ -267,7 +266,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "F403"]
-"lerobot/policies/wall_x/**" = ["N801", "N812", "SIM102", "SIM108", "SIM210", "SIM211", "B006", "B007", "SIM118"] # Supprese these as they are coming from original Qwen2_5_vl code TODO(pepijn): refactor original
+"src/lerobot/policies/wall_x/**" = ["N801", "N812", "SIM102", "SIM108", "SIM210", "SIM211", "B006", "B007", "SIM118"] # Supprese these as they are coming from original Qwen2_5_vl code TODO(pepijn): refactor original
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
@@ -287,7 +286,7 @@ docstring-code-format = true
 exclude_dirs = [
     "tests",
     "benchmarks",
-    "lerobot/datasets/push_dataset_to_hub",
+    "src/lerobot/datasets/push_dataset_to_hub",
 ]
 skips = ["B101", "B311", "B404", "B603", "B615"]
 
@@ -322,7 +321,7 @@ default.extend-ignore-identifiers-re = [
 # fail-under = 80
 # output-format = "term-missing"
 # color = true
-# paths = ["lerobot"]
+# paths = ["src/lerobot"]
 
 # TODO: Enable mypy gradually module by module across multiple PRs
 # Uncomment [tool.mypy] first, then uncomment individual module overrides as they get proper type annotations

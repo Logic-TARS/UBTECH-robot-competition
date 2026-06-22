@@ -5,6 +5,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG APP_DIR=/workspace/GlobalHumanoidRobotChallenge2026_Baseline
 ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG CN_PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
 ENV DEBIAN_FRONTEND=noninteractive \
     ACCEPT_EULA=Y \
@@ -24,7 +25,8 @@ RUN mkdir -p /var/lib/apt/lists/partial \
 WORKDIR /workspace
 COPY . ${APP_DIR}
 
-# Install dependencies into Isaac Sim's Python environment.
+# Install common dependencies into Isaac Sim's Python environment.
+# Keep numpy and packaging pinned/limited to avoid breaking Isaac Sim.
 RUN /isaac-sim/python.sh -m pip install --no-cache-dir -i ${PIP_INDEX_URL} \
     "cmake>=3.29.0.1" \
     "datasets>=2.19.0" \
@@ -55,11 +57,55 @@ RUN /isaac-sim/python.sh -m pip install --no-cache-dir -i ${PIP_INDEX_URL} \
     "pin" \
     "numpy<1.27,>=1.22" \
     "transformers>=4.48.0" \
+    "accelerate" \
+    "num2words" \
     "pytest>=8.1.0" \
-    && /isaac-sim/python.sh -m pip install --no-cache-dir -i ${PIP_INDEX_URL} --no-deps \
-    "pynput>=1.7.7" \
-    && /isaac-sim/python.sh -m pip install --no-cache-dir --no-deps -e ${APP_DIR}
+    && /isaac-sim/python.sh -m pip install --no-cache-dir -i ${PIP_INDEX_URL} --no-deps "pynput>=1.7.7"
 
+WORKDIR ${APP_DIR}
+
+# Avoid LeRobot dependency constraints from upgrading/downgrading Isaac Sim core deps.
+RUN if [[ -f pyproject.toml ]]; then \
+        sed -i 's/numpy[^"]*/numpy/g' pyproject.toml; \
+        sed -i 's/packaging[^"]*/packaging/g' pyproject.toml; \
+    else \
+        echo "ERROR: pyproject.toml not found in ${APP_DIR}" >&2; \
+        exit 1; \
+    fi
+
+# Reinstall low-level keyboard dependency before editable install.
+RUN /isaac-sim/python.sh -m pip install --no-cache-dir -i ${CN_PIP_INDEX_URL} evdev-binary
+
+# Safe editable install after removing risky numpy / packaging version constraints.
+RUN /isaac-sim/python.sh -m pip install --no-cache-dir -i ${CN_PIP_INDEX_URL} -e ${APP_DIR}
+
+RUN /isaac-sim/python.sh -m pip uninstall -y \
+    numpy \
+    numba \
+    lxml \
+    usd-core \
+    usd-core-parser \
+    docstring-parser \
+    && /isaac-sim/python.sh -m pip install --no-cache-dir -i ${PIP_INDEX_URL} \
+    numpy==1.26.4 \
+    lxml==4.9.3 \
+    "usd-core>=25.2.post1,<26.0" \
+    docstring-parser==0.16 \
+    pyjwt
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libavcodec-dev \
+        libavformat-dev \
+        libavutil-dev \
+        libswscale-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN /isaac-sim/python.sh -m pip uninstall -y torchcodec \
+    && /isaac-sim/python.sh -m pip install --no-cache-dir -i ${PIP_INDEX_URL} torchcodec==0.5.0
+
+RUN apt-get update && apt-get install -y evtest
 WORKDIR ${APP_DIR}
 
 CMD ["/bin/bash"]

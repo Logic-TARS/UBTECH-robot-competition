@@ -1,5 +1,4 @@
-# root_path: "../../assets/resources/"
-root_path: "../assets/resources/"
+root_path: "../../assets/resources/"
 
 scene_usd: 'Collected_Task4/SubUSDs/2_small_warehouse2.usd'
 
@@ -13,14 +12,33 @@ part:
   part_b_usd: "Collected_Part_B_blue/Part_B.usd"
   num_parts: 3
   if_split_in_boxes: True
+  fixed_spawn:
+    # 任务三固定生成点：每个平面/箱子使用 4 个角点，num_parts=3 时从 4 点中选 3 点。
+    # 关闭后会恢复原来的小范围随机散布。
+    enabled: true
+    # 点离中心的比例，越大间距越大
+    anchor_fraction: 0.87
+    # 绝对四点偏移 [x, y]，单位 m；配置后优先于 anchor_fraction，避免 plane_scale 太小导致四点紧凑。
+    # 当前四点相对每个 plane_position 中心展开为 14cm × 24cm。
+    # anchor_offsets:
+    #   - [-0.07, -0.12]
+    #   - [-0.07, 0.12]
+    #   - [0.07, -0.12]
+    #   - [0.07, 0.12]
+    # true=每轮随机选 3 个角点；false=固定取前三个角点。
+    random_select: true
+    z_offset: 0.0
+    # 位置固定四选三，但姿态保持随机；设为 false 才使用 rotation_deg。
+    random_rotation: true
+    rotation_deg: [0, 0, 0]
 
 plane:
   plane_position: 
-  - [0.28, 0.3, 1.2]
-  - [1.25, 0.3, 1.2]
+  - [0.28, 0.3, 1.044]
+  - [1.25, 0.3, 1.034]
   plane_scale: 
-  - [0.1, 0.1, 0.1] 
-  - [0.1, 0.1, 0.1]
+  - [0.12, 0.23, 0.1] 
+  - [0.12, 0.23, 0.1]
 
 table:
   table_usd: 'Collected_table_v2/table_v2.usd'
@@ -47,6 +65,7 @@ robot:
 foam:
   foam_usd: 'Collected_foam_collision/foam.usd' 
   foam_position: [0.76, 0.3, 1.0]
+  lock_foam: true   # 禁止物理引擎移动 foam，保持固定位置
 
 grasp:
   target_index: 0
